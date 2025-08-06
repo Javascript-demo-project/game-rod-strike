@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Rod Strike Game</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: sans-serif;
+      background: linear-gradient(to top, #9ddff3, #bfefff);
+      color: #333;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    #gameCanvas {
+      background: linear-gradient(to top, #745c3a 30%, #6b4c3b 70%);
+      border: 3px solid #444;
+      margin-top: 20px;
+      box-shadow: 0 0 12px #222;
+      cursor: pointer;
+    }
+    #message {
+      margin-top: 15px;
+      font-size: 20px;
+      font-weight: bold;
+      color: #00aa99;
+      min-height: 30px;
+    }
+  </style>
+</head>
+<body>
+  <h2>🌞 Rod Strike - Traditional Village Game</h2>
+  <canvas id="gameCanvas" width="800" height="600"></canvas>
+  <div id="message">Click and drag to throw the rod into the circle!</div>
+
+  <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    const messageBox = document.getElementById("message");
+
+    const groundY = 500;
+    const target = {
+      x: 400,
+      y: groundY,
+      radiusX: 110,
+      radiusY: 40,
+      speed: 2,
+      direction: 1,
+      minX: 150,
+      maxX: 650,
+      moving: true,
+    };
+
+    let isDragging = false;
+    let startX, startY;
+    let rod = null;
+    let standing = false;
+
+    const rodImage = new Image();
+    rodImage.src = "https://i.imgur.com/rBzMUGj.png";
+
+    // Flower petals for shower effect
+    let petals = [];
+    let showFlower = false;
+
+    function createPetals() {
+      petals = [];
+      for (let i = 0; i < 30; i++) {
+        petals.push({
+          x: target.x + (Math.random() - 0.5) * target.radiusX * 2,
+          y: Math.random() * 20, // start near top of canvas
+          vy: 1 + Math.random() * 1.5,
+          vx: (Math.random() - 0.5) * 1,
+          radius: 3 + Math.random() * 3,
+          alpha: 1,
+          rotation: Math.random() * Math.PI * 2,
+          rotationSpeed: (Math.random() - 0.5) * 0.1,
+          color: `hsl(${Math.random() * 40 + 300}, 70%, 70%)`
+        });
+      }
+    }
+
+    function drawPetals() {
+      petals.forEach(p => {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.rotation += p.rotationSpeed;
+
+        // Fully visible while falling, start fading near bottom (30px above canvas bottom)
+        if (p.y > canvas.height - 30) {
+          p.alpha -= 0.01;
+          if (p.alpha < 0) p.alpha = 0;
+        } else {
+          p.alpha = 1;
+        }
+
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.rotation);
+        ctx.fillStyle = `rgba(255, 105, 180, ${p.alpha.toFixed(2)})`; // hotpink with alpha
+        ctx.beginPath();
+        ctx.ellipse(0, 0, p.radius, p.radius / 2, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      });
+
+      // Remove petals only when fallen below canvas bottom
+      petals = petals.filter(p => p.y < canvas.height);
+    }
+
+    function drawTarget() {
+      ctx.beginPath();
+      ctx.ellipse(target.x, target.y, target.radiusX, target.radiusY, 0, 0, Math.PI * 2);
+      ctx.fillStyle = "#3a241b"; // muddy dark brown
+      ctx.fill();
+      ctx.strokeStyle = "#000";
+      ctx.stroke();
+    }
+
+    function drawRod() {
+      if (!rod) return;
+
+      // Shadow
+      ctx.beginPath();
+      ctx.ellipse(rod.x, groundY + 5, 12, 5, 0, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(0,0,0,0.25)";
+      ctx.fill();
+
+      const rodHeight = standing ? 60 : 30;
+      const rodWidth = 6;
+
+      if (rodImage.complete) {
+        ctx.drawImage(
+          rodImage,
+          rod.x - rodWidth / 2,
+          rod.y - rodHeight,
+          rodWidth,
+          rodHeight
+        );
+      } else {
+        ctx.fillStyle = "silver";
+        ctx.fillRect(rod.x - rodWidth / 2, rod.y - rodHeight, rodWidth, rodHeight);
+      }
+    }
+
+    function drawArrow(x1, y1, x2, y2) {
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.strokeStyle = "red";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+
+    function isInsideTarget(x, y) {
+      const dx = x - target.x;
+      const dy = y - target.y;
+      return (dx * dx) / (target.radiusX * target.radiusX) + (dy * dy) / (target.radiusY * target.radiusY) <= 1;
+    }
+
+    function updateTarget() {
+      if (!target.moving) return;
+
+      target.x += target.speed * target.direction;
+      if (target.x > target.maxX || target.x < target.minX) {
+        target.direction *= -1;
+      }
+    }
+
+    function updateRod() {
+      if (!rod) return;
+      if (standing) return;
+
+      rod.vy += 0.5; // gravity
+      rod.x += rod.vx;
+      rod.y += rod.vy;
+
+      if (rod.y >= groundY) {
+        rod.y = groundY;
+        rod.vx = 0;
+        rod.vy = 0;
+
+        target.moving = false;
+
+        if (isInsideTarget(rod.x, rod.y)) {
+          messageBox.textContent = "🎯 Great shot! Rod landed on the moving target!";
+          standing = true;
+          showFlower = true;
+          createPetals();
+        } else {
+          messageBox.textContent = "❌ Missed the moving target! Try again.";
+          setTimeout(() => {
+            rod = null;
+            messageBox.textContent = "Click and drag to throw again!";
+            target.moving = true;
+          }, 2000);
+        }
+      }
+    }
+
+    function gameLoop() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      updateTarget();
+      drawTarget();
+      drawRod();
+      updateRod();
+
+      if (showFlower) {
+        drawPetals();
+        if (petals.length === 0) {
+          messageBox.textContent = "🌸 Click anywhere to continue!";
+        }
+      }
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    canvas.addEventListener("mousedown", (e) => {
+      if (rod || showFlower) return;
+      isDragging = true;
+      startX = e.offsetX;
+      startY = e.offsetY;
+    });
+
+    canvas.addEventListener("mousemove", (e) => {
+      if (isDragging) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        drawTarget();
+        drawRod();
+        drawArrow(startX, startY, e.offsetX, e.offsetY);
+      }
+    });
+
+    canvas.addEventListener("mouseup", (e) => {
+      if (!isDragging) return;
+      isDragging = false;
+
+      if (showFlower) return;
+
+      const dx = startX - e.offsetX;
+      const dy = startY - e.offsetY;
+
+      rod = {
+        x: startX,
+        y: startY,
+        vx: -dx / 10,
+        vy: -dy / 10,
+      };
+
+      messageBox.textContent = "Rod in the air...";
+    });
+
+    canvas.addEventListener("click", () => {
+      if (showFlower && petals.length === 0) {
+        showFlower = false;
+        standing = false;
+        rod = null;
+        target.moving = true;
+        messageBox.textContent = "Click and drag to throw the rod into the circle!";
+      }
+    });
+
+    rodImage.onload = () => gameLoop();
+  </script>
+</body>
+</html>
